@@ -648,7 +648,7 @@ namespace MOD_nE7UL2.Mod
                                 !CommonTool.Random(0.00f, 100.00f).IsBetween(0.00f, (luck / 10.0f) + (ringLockScore / 100.0f)))
                             {
                                 dieUnitWUnit.RemoveUnitProp(item.soleID);
-                                if (killerWUnit.IsPlayer())
+                                if (isKillerWUnit && killerWUnit.IsPlayer())
                                     ModBattleEvent.SceneBattle.battleData.allDropRewardItem.Remove(item);
                                 else if (isKillerWUnit)
                                     killerWUnit.AddUnitProp(item);
