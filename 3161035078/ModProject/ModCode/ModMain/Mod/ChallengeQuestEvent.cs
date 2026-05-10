@@ -105,6 +105,7 @@ namespace MOD_nE7UL2.Mod
         public int TaskLevel { get; set; } = 0;
         public int CurrentWins { get; set; } = 0;
         public List<string> DefeatedOpponents { get; set; } = new List<string>();
+        public bool PendingComplete { get; set; } = false;
 
         public override void OnLoadGame()
         {
@@ -164,9 +165,12 @@ namespace MOD_nE7UL2.Mod
                     }
 
                     // Kiểm tra hoàn thành nhiệm vụ
+                    // Defer CompleteTask until OnBattleEnd: calling AddLuck/RemoveTask
+                    // here invokes WorldUnitBase.CreateAction while still in battle scene,
+                    // which throws NullReferenceException.
                     if (CurrentWins >= currentTaskInfo.RequiredWins)
                     {
-                        CompleteTask();
+                        PendingComplete = true;
                     }
                 }
             }
@@ -241,6 +245,16 @@ namespace MOD_nE7UL2.Mod
             }
         }
 
+        public override void OnBattleEnd(BattleEnd e)
+        {
+            base.OnBattleEnd(e);
+            if (PendingComplete)
+            {
+                PendingComplete = false;
+                CompleteTask();
+            }
+        }
+
         // Reset progress khi bắt đầu game mới
         public override void OnLoadNewGame()
         {
@@ -248,6 +262,7 @@ namespace MOD_nE7UL2.Mod
             TaskLevel = 0;
             CurrentWins = 0;
             DefeatedOpponents.Clear();
+            PendingComplete = false;
         }
     }
 }
