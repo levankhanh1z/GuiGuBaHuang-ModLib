@@ -7,17 +7,17 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using ModLib.Helper;
-
+ 
 namespace MOD_nE7UL2.Mod
 {
     [Cache(ModConst.CHALLENGE_QUEST_EVENT)]
     public class ChallengeQuestEvent : ModEvent
     {
         public static ChallengeQuestEvent Instance { get; set; }
-
+ 
         public const int TASK_BASE_ID = 444446000;
         public const int LUCK_BASE_ID = 444445000;
-
+ 
         public class ChallengeTaskInfo
         {
             public int TaskLevel { get; set; }
@@ -27,7 +27,7 @@ namespace MOD_nE7UL2.Mod
             public int TaskId { get { return TASK_BASE_ID + TaskLevel; } }
             public int LuckId { get { return LUCK_BASE_ID + TaskLevel; } }
         }
-
+ 
         public static IList<ChallengeTaskInfo> TaskInfo { get; set; } = new List<ChallengeTaskInfo>
         {
             new ChallengeTaskInfo
@@ -101,48 +101,49 @@ namespace MOD_nE7UL2.Mod
                 ActiveCondition = () => true,
             }
         };
-
+ 
         public int TaskLevel { get; set; } = 0;
         public int CurrentWins { get; set; } = 0;
         public List<string> DefeatedOpponents { get; set; } = new List<string>();
-
+        public bool PendingComplete { get; set; } = false;
+ 
         public override void OnLoadGame()
         {
             base.OnLoadGame();
             AddTask();
         }
-
+ 
         public override void OnMonthly()
         {
             base.OnMonthly();
             AddTask();
         }
-
+ 
         public override void OnBattleUnitDie(UnitDie e)
         {
             base.OnBattleUnitDie(e);
-
+ 
             var dieUnit = e?.unit;
             var dieUnitWUnit = dieUnit?.GetWorldUnit();
             if (dieUnit == null || dieUnitWUnit == null)
                 return;
-
+ 
             var killer = e?.hitData?.attackUnit;
             var killerWUnit = killer?.GetWorldUnit();
-
+ 
             // Chỉ tính khi player giết địch
             if (killerWUnit == null || !killerWUnit.IsPlayer())
                 return;
-
+ 
             var currentTaskInfo = TaskInfo.FirstOrDefault(x => x.TaskLevel == TaskLevel + 1);
             if (currentTaskInfo == null)
                 return;
-
+ 
             // Kiểm tra level difference
             var playerLevel = g.world.playerUnit.GetGradeLvl();
             var opponentLevel = dieUnitWUnit.GetGradeLvl();
             var levelDifference = opponentLevel - playerLevel;
-
+ 
             if (levelDifference >= currentTaskInfo.MinLevelDifference)
             {
                 var opponentId = dieUnitWUnit.GetUnitId();
@@ -152,7 +153,7 @@ namespace MOD_nE7UL2.Mod
                 {
                     CurrentWins++;
                     DefeatedOpponents.Add(opponentId);
-
+ 
                     var currentTask = GetCurrentTask();
                     if (currentTask != null)
                     {
@@ -162,16 +163,19 @@ namespace MOD_nE7UL2.Mod
                             task.taskData.curCount = CurrentWins;
                         }
                     }
-
+ 
                     // Kiểm tra hoàn thành nhiệm vụ
+                    // Defer CompleteTask until OnBattleEnd: calling AddLuck/RemoveTask
+                    // here invokes WorldUnitBase.CreateAction while still in battle scene,
+                    // which throws NullReferenceException.
                     if (CurrentWins >= currentTaskInfo.RequiredWins)
                     {
-                        CompleteTask();
+                        PendingComplete = true;
                     }
                 }
             }
         }
-
+ 
         private void CompleteTask()
         {
             TaskLevel++;
@@ -181,7 +185,7 @@ namespace MOD_nE7UL2.Mod
             AddLuck();
             RemoveTask();
         }
-
+ 
         private void RemoveTask()
         {
             foreach (var tInfo in TaskInfo)
@@ -191,16 +195,16 @@ namespace MOD_nE7UL2.Mod
                     g.world.playerUnit.DelTask(task);
             }
         }
-
+ 
         private TaskBase GetCurrentTask()
         {
             var taskInfo = TaskInfo.FirstOrDefault(x => x.TaskLevel == TaskLevel + 1);
             if (taskInfo == null)
                 return null;
-
+ 
             return g.world.playerUnit.GetTask(taskInfo.TaskId).ToArray().FirstOrDefault();
         }
-
+ 
         private TaskBase AddTask()
         {
             var taskInfo = TaskInfo.FirstOrDefault(x => x.TaskLevel == TaskLevel + 1);
@@ -208,7 +212,7 @@ namespace MOD_nE7UL2.Mod
             {
                 return null;
             }
-
+ 
             var existingTask = g.world.playerUnit.GetTask(taskInfo.TaskId).ToArray().FirstOrDefault();
             if (existingTask == null && taskInfo.ActiveCondition())
             {
@@ -223,7 +227,7 @@ namespace MOD_nE7UL2.Mod
             }
             return existingTask;
         }
-
+ 
         private void RemoveLuck()
         {
             foreach (var tInfo in TaskInfo)
@@ -231,7 +235,7 @@ namespace MOD_nE7UL2.Mod
                 g.world.playerUnit.DelLuck(tInfo.LuckId);
             }
         }
-
+ 
         private void AddLuck()
         {
             RemoveLuck();
@@ -240,7 +244,17 @@ namespace MOD_nE7UL2.Mod
                 g.world.playerUnit.AddLuck(TaskInfo[TaskLevel - 1].LuckId);
             }
         }
-
+ 
+        public override void OnBattleEnd(BattleEnd e)
+        {
+            base.OnBattleEnd(e);
+            if (PendingComplete)
+            {
+                PendingComplete = false;
+                CompleteTask();
+            }
+        }
+ 
         // Reset progress khi bắt đầu game mới
         public override void OnLoadNewGame()
         {
@@ -248,6 +262,7 @@ namespace MOD_nE7UL2.Mod
             TaskLevel = 0;
             CurrentWins = 0;
             DefeatedOpponents.Clear();
+            PendingComplete = false;
         }
     }
 }
